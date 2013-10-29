@@ -16,44 +16,15 @@ module Beaker
       @hosts = []
       @virtual_machines = {}
       @noprovision_machines = []
-      @options['HOSTS'].each_key do |name|
-        host_info = @options['HOSTS'][name]
-        #check to see if this host has a hypervisor 
-        hypervisor = host_info['hypervisor'] 
-        #provision this box
-        # - only if we are running with --provision
-        # - only if we have a hypervisor
-        # - only if either the specific hosts has no specification or has 'provision' in its config
-        if @options[:provision] && hypervisor && (host_info.has_key?('provision') ? host_info['provision'] : true) #obey config file provision, defaults to provisioning vms
-          raise "Invalid hypervisor: #{hypervisor} (#{name})" unless HYPERVISOR_TYPES.include? hypervisor
-          @logger.debug "Hypervisor for #{name} is #{host_info['hypervisor'] || 'default' }, and I'm going to use #{hypervisor}"
-          @virtual_machines[hypervisor] = [] unless @virtual_machines[hypervisor]
-          @virtual_machines[hypervisor] << name
-        else #this is a non-provisioned machine, deal with it without hypervisors
-          @logger.debug "No hypervisor for #{name}, connecting to host without provisioning"
-          @noprovision_machines << name
-        end
-
-      end
+      @hypervisors = {}
     end
 
     def provision
-      @provisioned_set = {}
-      @virtual_machines.each do |type, names|
-        hosts_for_type = []
-        #set up host objects for provisioned provisioned_set
-        names.each do |name|
-          host = Beaker::Host.create(name, @options)
-          hosts_for_type << host
-        end
-        @provisioned_set[type] = Beaker::Hypervisor.create(type, hosts_for_type, @options)
-        @hosts << hosts_for_type
+      initialize_hosts
+
+      if @options[:provision]
+        @hypervisors.each(&:provision)
       end
-      @noprovision_machines.each do |name|
-        @hosts << Beaker::Host.create(name, @options)
-      end
-      @hosts = @hosts.flatten
-      @hosts
     end
 
     def cleanup
@@ -62,11 +33,24 @@ module Beaker
       @hosts.each {|host| host.close }
 
       if not @options[:preserve_hosts]
-        @provisioned_set.each_key do |type|
-          @provisioned_set[type].cleanup
-        end
+        @hypervisors.each(&:cleanup)
       end
     end
 
+    private
+
+    def initialize_hosts
+      hosts_by_hypervisor.each do |hypervisor, hosts|
+        initialized = hosts.map { |name, _| Beaker::Host.create(name, @options) }
+        if hypervisor
+          @hypervisors[hypervisor] = Beaker::Hypervisor.create(type, initialized, @options)
+        end
+        @hosts.append(initialized)
+      end
+    end
+
+    def hosts_by_hypervisor
+      @options['HOSTS'].group_by { |h| h['hypervisor'] }
+    end
   end
 end

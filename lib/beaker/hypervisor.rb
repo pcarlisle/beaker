@@ -24,10 +24,7 @@ module Beaker
         when /vagrant/
           Beaker::Vagrant
         end
-      hypervisor = hyper_class.new(hosts_to_provision, options)
-      hypervisor.provision
-
-      hypervisor
+      hyper_class.new(hosts_to_provision, options)
     end
 
     def provision
