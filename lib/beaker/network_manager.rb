@@ -16,7 +16,7 @@ module Beaker
       @hosts = []
       @virtual_machines = {}
       @noprovision_machines = []
-      @hypervisors = {}
+      @hypervisors = []
     end
 
     def provision
@@ -25,6 +25,9 @@ module Beaker
       if @options[:provision]
         @hypervisors.each(&:provision)
       end
+
+      @hypervisors.each(&:post_provision)
+      @hosts
     end
 
     def cleanup
@@ -43,14 +46,16 @@ module Beaker
       hosts_by_hypervisor.each do |hypervisor, hosts|
         initialized = hosts.map { |name, _| Beaker::Host.create(name, @options) }
         if hypervisor
-          @hypervisors[hypervisor] = Beaker::Hypervisor.create(type, initialized, @options)
+          @hypervisors << Beaker::Hypervisor.create(hypervisor, initialized, @options)
         end
-        @hosts.append(initialized)
+
+        @logger.notify("Putting #{initialized} for #{hypervisor}")
+        @hosts.concat(initialized)
       end
     end
 
     def hosts_by_hypervisor
-      @options['HOSTS'].group_by { |h| h['hypervisor'] }
+      @options['HOSTS'].group_by { |name, h| h[:hypervisor] }
     end
   end
 end

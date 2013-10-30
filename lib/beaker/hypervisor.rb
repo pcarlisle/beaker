@@ -30,6 +30,10 @@ module Beaker
     def provision
       nil
     end
+
+    def post_provision
+      nil
+    end
   end
 end
 

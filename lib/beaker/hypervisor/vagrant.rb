@@ -64,20 +64,20 @@ module Beaker
     end
 
     def set_ssh_config host, user
-        f = Tempfile.new("#{host.name}")
-        ssh_config = Dir.chdir(@vagrant_path) do
-          stdin, stdout = Open3.popen3('vagrant', 'ssh-config', host.name)
-          stdout.read
-        end
-        #replace hostname with ip
-        ssh_config = ssh_config.gsub(/#{host.name}/, host['ip']) 
-        #set the user 
-        ssh_config = ssh_config.gsub(/User vagrant/, "User #{user}") 
-        f.write(ssh_config)
-        f.rewind
-        host['ssh'] = {:config => f.path()}
-        host['user'] = user
-        @temp_files << f
+      f = Tempfile.new("#{host.name}")
+      ssh_config = Dir.chdir(@vagrant_path) do
+        stdin, stdout = Open3.popen3('vagrant', 'ssh-config', host.name)
+        stdout.read
+      end
+      #replace hostname with ip
+      ssh_config = ssh_config.gsub(/#{host.name}/, host['ip']) if host['ip']
+      #set the user 
+      ssh_config = ssh_config.gsub(/User vagrant/, "User #{user}") 
+      f.write(ssh_config)
+      f.rewind
+      host['ssh'] = {:config => f.path()}
+      host['user'] = user
+      @temp_files << f
     end
 
     def initialize(vagrant_hosts, options)
@@ -96,19 +96,21 @@ module Beaker
       #stop anything currently running, that way vagrant up will re-do networking on existing boxes
       vagrant_cmd("halt")
       vagrant_cmd("up")
+    end
 
+    def post_provision
       @logger.debug "configure vagrant boxes (set ssh-config, switch to root user, hack etc/hosts)"
       @vagrant_hosts.each do |host|
         default_user = host['user']
-
         set_ssh_config host, 'vagrant'
-        
+        host['ip'] = host.exec(Command.new("/sbin/ip a|awk '/g/{print$2}' | cut -d/ -f1 | head -1")).stdout.chomp
+
         copy_ssh_to_root host
         #shut down connection, will reconnect on next exec
-        host.close 
+        host.close
 
-        set_ssh_config host, default_user
-
+        puts "Setting config to connect via #{host['user']}"
+        set_ssh_config(host, default_user)
       end
 
       hack_etc_hosts @vagrant_hosts
